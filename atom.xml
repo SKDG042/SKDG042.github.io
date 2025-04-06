@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>_042♪</title>
+  
+  
+  <link href="https://skdg042.github.io/atom.xml" rel="self"/>
+  
+  <link href="https://skdg042.github.io/"/>
+  <updated>2025-04-06T15:17:15.083Z</updated>
+  <id>https://skdg042.github.io/</id>
+  
+  <author>
+    <name>_042</name>
+    
+  </author>
+  
+  <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>Hello World</title>
+    <link href="https://skdg042.github.io/posts/4a17b156.html"/>
+    <id>https://skdg042.github.io/posts/4a17b156.html</id>
+    <published>2025-04-06T20:19:20.000Z</published>
+    <updated>2025-04-06T15:17:15.083Z</updated>
+    
+    
+    
+    
+    
+  </entry>
+  
+</feed>
