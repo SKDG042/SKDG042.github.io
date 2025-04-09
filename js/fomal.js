@@ -90,7 +90,7 @@ function scrollToTop() {
 let ipLoacation = null;
 let ipInfoReady = false;
 
-// 获取位置信息 - 使用高德地图API，适合国内环境
+// 获取位置信息 - 使用 GeoJS API 和 高德地图API 结合
 function fetchLocationData() {
   // 检查当前环境是否为本地或GitHub Pages
   const isLocalHost =
@@ -98,182 +98,36 @@ function fetchLocationData() {
     window.location.hostname === "localhost";
   const isGitHubPages = window.location.hostname.endsWith("github.io");
 
-  if (isLocalHost || isGitHubPages) {
-    console.log("检测到本地环境或GitHub Pages，使用直接定位方式");
-    // 在本地或GitHub Pages环境下直接使用高德API
-    useDirectGeolocation();
-    return;
-  }
-
-  // 使用HTTPS协议的IP查询服务
+  // 优先使用 GeoJS API 获取 IP 和位置 (HTTPS, 国际通用)
   $.ajax({
     type: "get",
-    url: "https://api.ipify.org?format=json",
+    url: "https://get.geojs.io/v1/ip/geo.json",
     dataType: "json",
-    success: function (ipRes) {
-      let userIp = ipRes.ip;
-      console.log("IP获取成功:", userIp);
-
-      // 检查是否获取到了本地IP
-      if (
-        userIp === "127.0.0.1" ||
-        userIp === "::1" ||
-        userIp.startsWith("192.168.") ||
-        userIp.startsWith("10.")
-      ) {
-        console.log("检测到本地IP地址，使用直接定位方式");
-        useDirectGeolocation();
-        return;
-      }
-
-      // 获取到IP后，调用高德API获取位置信息
-      $.ajax({
-        type: "get",
-        url: "https://restapi.amap.com/v3/ip",
-        data: {
-          key: "b1e9effb2d59fc94c2b19a1c73fc7ed2",
-          ip: userIp,
-        },
-        dataType: "json",
-        success: function (data) {
-          console.log("高德地图位置API响应成功:", data);
-          if (data && data.status === "1") {
-            // 高德API返回正常
-            ipLoacation = {
-              ip: userIp,
-              country: "中国", // 高德API默认只支持中国
-              province: data.province || "未知省份",
-              city: data.city || "",
-              district: "", // 高德API不直接返回区县信息
-              adcode: data.adcode,
-              rectangle: data.rectangle, // 城市矩形区域范围，可用于估算经纬度
-            };
-
-            // 如果有rectangle数据，提取中心点作为经纬度
-            if (data.rectangle) {
-              try {
-                let rectArray = data.rectangle.split(";");
-                if (rectArray.length > 0) {
-                  // 使用第一组坐标数据
-                  let coords = rectArray[0].split(",");
-                  if (coords.length >= 2) {
-                    ipLoacation.longitude = parseFloat(coords[0]);
-                    ipLoacation.latitude = parseFloat(coords[1]);
-                  }
-                }
-              } catch (e) {
-                console.log("解析经纬度数据出错:", e);
-              }
-            }
-          } else {
-            // 高德API返回错误，使用浏览器定位
-            useDirectGeolocation();
-            return;
-          }
-          ipInfoReady = true;
-          showWelcome();
-        },
-        error: function (err) {
-          console.log("高德地图位置API请求失败:", err);
-          // 请求失败，使用浏览器定位
-          useDirectGeolocation();
-        },
-      });
+    success: function (res) {
+      console.log("GeoJS位置API响应成功:", res);
+      ipLoacation = {
+        ip: res.ip || "未能获取IP",
+        country: res.country || "未知国家",
+        province: res.region || "未知省份", // GeoJS 使用 region
+        city: res.city || "",
+        district: "", // GeoJS 不提供区县
+        longitude: parseFloat(res.longitude || 0),
+        latitude: parseFloat(res.latitude || 0),
+        country_code: res.country_code,
+      };
+      ipInfoReady = true;
+      showWelcome();
     },
     error: function (err) {
-      console.log("IP获取失败:", err);
-      // IP获取失败，使用浏览器定位
-      useDirectGeolocation();
+      console.log("GeoJS获取位置API请求失败:", err);
+      // GeoJS 失败，尝试备用方案：直接使用高德API
+      fallbackToDirectAmap(isGitHubPages); // 传递 GitHub Pages 状态
     },
   });
 }
 
-// 使用浏览器的地理位置API或直接高德API
-function useDirectGeolocation() {
-  if (navigator.geolocation) {
-    // 尝试使用浏览器的地理位置API
-    navigator.geolocation.getCurrentPosition(
-      // 成功获取位置
-      function (position) {
-        console.log("浏览器定位成功:", position);
-        // 反向地理编码 - 将坐标转换为地址
-        $.ajax({
-          type: "get",
-          url: "https://restapi.amap.com/v3/geocode/regeo",
-          data: {
-            key: "b1e9effb2d59fc94c2b19a1c73fc7ed2",
-            location:
-              position.coords.longitude + "," + position.coords.latitude,
-            extensions: "base",
-          },
-          dataType: "json",
-          success: function (geoData) {
-            console.log("反向地理编码成功:", geoData);
-            if (geoData && geoData.status === "1" && geoData.regeocode) {
-              const addressComponent = geoData.regeocode.addressComponent;
-              ipLoacation = {
-                ip: "已获取位置",
-                country: "中国",
-                province: addressComponent.province || "未知省份",
-                city: addressComponent.city || "",
-                district: addressComponent.district || "",
-                longitude: position.coords.longitude,
-                latitude: position.coords.latitude,
-              };
-            } else {
-              // 反向地理编码失败，仅使用坐标
-              ipLoacation = {
-                ip: "已获取位置",
-                country: "中国",
-                province: "未知省份",
-                city: "",
-                district: "",
-                longitude: position.coords.longitude,
-                latitude: position.coords.latitude,
-              };
-            }
-            ipInfoReady = true;
-            showWelcome();
-          },
-          error: function (err) {
-            console.log("反向地理编码失败:", err);
-            // 仅使用坐标
-            ipLoacation = {
-              ip: "已获取位置",
-              country: "未知国家",
-              province: "未知省份",
-              city: "",
-              district: "",
-              longitude: position.coords.longitude,
-              latitude: position.coords.latitude,
-            };
-            ipInfoReady = true;
-            showWelcome();
-          },
-        });
-      },
-      // 获取位置失败
-      function (err) {
-        console.log("浏览器定位失败:", err);
-        // 使用直接高德API获取IP
-        fallbackToDirectAmap();
-      },
-      // 选项
-      {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 0,
-      }
-    );
-  } else {
-    // 浏览器不支持地理位置API
-    console.log("浏览器不支持地理位置API");
-    fallbackToDirectAmap();
-  }
-}
-
-// 后备方案：直接使用高德API
-function fallbackToDirectAmap() {
+// 备用方案：直接使用高德API (无IP，仅位置)
+function fallbackToDirectAmap(isGitHubPages) {
   $.ajax({
     type: "get",
     url: "https://restapi.amap.com/v3/ip",
@@ -283,15 +137,20 @@ function fallbackToDirectAmap() {
     dataType: "json",
     success: function (data) {
       console.log("高德地图直接IP获取成功:", data);
+      let ipToShow = "未能获取IP"; // 高德不返回IP
+      if (isGitHubPages) {
+        ipToShow = "GitHub Pages环境"; // GitHub Pages 特殊处理
+      }
+
       if (data && data.status === "1") {
         // 检查是否获取到了内网IP
         if (data.province === "局域网" || !data.province) {
-          useDefaultLocation();
+          useDefaultLocation(isGitHubPages); // 使用默认位置，并传递GitHub Pages状态
           return;
         }
 
         ipLoacation = {
-          ip: "已获取位置",
+          ip: ipToShow,
           country: "中国",
           province: data.province || "未知省份",
           city: data.city || "",
@@ -315,26 +174,33 @@ function fallbackToDirectAmap() {
           }
         }
       } else {
-        useDefaultLocation();
+        useDefaultLocation(isGitHubPages); // 使用默认位置，并传递GitHub Pages状态
         return;
       }
       ipInfoReady = true;
       showWelcome();
     },
     error: function (err) {
-      console.log("所有IP获取方式均失败:", err);
-      useDefaultLocation();
+      console.log("所有位置获取方式均失败:", err);
+      useDefaultLocation(isGitHubPages); // 使用默认位置，并传递GitHub Pages状态
     },
   });
 }
 
 // 使用默认位置
-function useDefaultLocation() {
+function useDefaultLocation(isGitHubPages) {
+  let ipToShow = "未能获取位置";
+  let posToShow = "未知位置";
+  if (isGitHubPages) {
+    ipToShow = "GitHub Pages环境";
+    posToShow = "GitHub的云端";
+  }
+
   ipLoacation = {
-    ip: "未能获取位置",
+    ip: ipToShow,
     country: "中国",
-    province: "未知省份",
-    city: "未知城市",
+    province: posToShow, // 在默认情况下用posToShow代替省份
+    city: "",
     district: "",
     longitude: 116.403963, // 默认北京天安门
     latitude: 39.915119,
@@ -347,6 +213,7 @@ function useDefaultLocation() {
 fetchLocationData();
 
 function getDistance(e1, n1, e2, n2) {
+  if (!e1 || !n1 || !e2 || !n2) return 0; // 防止无效坐标导致NaN
   const R = 6371;
   const { sin, cos, asin, PI, hypot } = Math;
   let getPoint = (e, n) => {
@@ -358,6 +225,8 @@ function getDistance(e1, n1, e2, n2) {
   let a = getPoint(e1, n1);
   let b = getPoint(e2, n2);
   let c = hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+  // 避免 c/2 > 1 导致 asin 返回 NaN
+  if (c / 2 > 1) c = 2;
   let r = asin(c / 2) * 2 * R;
   return Math.round(r);
 }
@@ -392,19 +261,19 @@ function showWelcome() {
 
     // 检查API请求是否成功并包含必要数据
     if (ipLoacation) {
-      // 检查是否为本地IP
+      const isGitHubPages = window.location.hostname.endsWith("github.io");
+
+      // 检查是否为本地IP (主要来自GeoJS)
       if (
         ipLoacation.ip === "127.0.0.1" ||
         ipLoacation.ip === "::1" ||
-        ipLoacation.ip.startsWith("192.168.") ||
-        ipLoacation.ip.startsWith("10.")
+        (ipLoacation.ip &&
+          (ipLoacation.ip.startsWith("192.168.") ||
+            ipLoacation.ip.startsWith("10.")))
       ) {
         welcomeInfoElement.innerHTML = `<b><center>🎉 欢迎信息 🎉</center>&emsp;&emsp;欢迎访问本站！${timeChange}您似乎是通过本地环境访问的，很高兴遇见你~</b>`;
         return;
       }
-
-      // 检查是否在GitHub Pages环境
-      const isGitHubPages = window.location.hostname.endsWith("github.io");
 
       // 计算距离
       let dist = 0;
@@ -417,235 +286,254 @@ function showWelcome() {
         );
       }
 
-      // 如果距离为0且在GitHub Pages环境，使用预设距离
-      if (dist === 0 && isGitHubPages) {
-        dist = "未知";
+      // 如果距离为0且非默认坐标，尝试标记为未知 (尤其在 GitHub Pages 上)
+      let distanceInfo = "";
+      if (
+        dist === 0 &&
+        !(
+          ipLoacation.longitude === 116.403963 &&
+          ipLoacation.latitude === 39.915119
+        )
+      ) {
+        if (isGitHubPages) dist = "未知";
+      }
+
+      if (dist === "未知") {
+        distanceInfo = "距离站长未知";
+      } else if (dist > 0) {
+        distanceInfo = `距离站长约 <span style="color:var(--theme-color)">${dist}</span> 公里`;
+      } else {
+        // 距离为0或无效，且不是 GitHub Pages 的特殊情况
+        // 可能用户就在站长位置，或者坐标无效
+        distanceInfo = "似乎离站长很近";
       }
 
       // 格式化位置信息
-      let pos = "未知";
-      if (ipLoacation.province) {
-        // 检查是否是直辖市（省份名和城市名相同或相似）
-        const isDirectCity =
-          ipLoacation.province === ipLoacation.city ||
-          ipLoacation.province.includes(ipLoacation.city) ||
-          ipLoacation.city.includes(ipLoacation.province) ||
-          !ipLoacation.city;
+      let pos = "未知位置";
+      if (
+        ipLoacation.province &&
+        ipLoacation.province !== "未知省份" &&
+        ipLoacation.province !== "未知位置"
+      ) {
+        let provinceName = ipLoacation.province
+          .replace("省", "")
+          .replace("市", "")
+          .replace("自治区", "")
+          .replace("特别行政区", "");
+        let cityName = (ipLoacation.city || "").replace("市", "");
 
-        if (isDirectCity) {
-          // 直辖市只显示一次城市名
-          pos = ipLoacation.province.replace("市", "");
+        // 处理直辖市和特别行政区
+        const directCities = ["北京", "上海", "天津", "重庆", "香港", "澳门"];
+        if (directCities.includes(provinceName)) {
+          pos = provinceName;
+        } else if (provinceName === cityName || !cityName) {
+          pos = provinceName; // 省和市相同或市为空
         } else {
-          // 非直辖市显示省份+城市
-          pos = ipLoacation.province;
-          if (ipLoacation.city) {
-            pos += " " + ipLoacation.city;
-          }
+          pos = provinceName + " " + cityName;
         }
 
+        // 添加区县信息（如果可用）
         if (ipLoacation.district) {
-          pos += " " + ipLoacation.district;
+          pos += " " + ipLoacation.district.replace("区", "").replace("县", "");
         }
+      } else if (ipLoacation.country && ipLoacation.country !== "中国") {
+        pos = ipLoacation.country; // 显示国家名称
       }
 
-      // 如果在GitHub Pages环境且位置不明确
-      if (isGitHubPages && pos === "未知") {
+      // GitHub Pages 环境下的特殊显示
+      if (isGitHubPages && (pos === "未知位置" || pos === "GitHub的云端")) {
         pos = "GitHub的云端";
       }
 
-      let ip = ipLoacation.ip || "未能获取位置";
-      let posdesc = "";
-
-      // 处理GitHub Pages特殊情况
-      if (
-        isGitHubPages &&
-        (ip === "127.0.0.1" || ip === "::1" || ip === "未能获取位置")
-      ) {
+      let ip = ipLoacation.ip || "未能获取IP";
+      // GitHub Pages 环境下隐藏具体IP
+      if (isGitHubPages && ip !== "GitHub Pages环境" && ip !== "未能获取IP") {
         ip = "GitHub Pages环境";
       }
 
-      // 根据省份生成欢迎语
-      if (ipLoacation.country === "中国") {
-        if (pos === "未知" || pos === "GitHub的云端") {
-          posdesc = "感谢您访问我的GitHub Pages站点！";
-        } else {
-          switch (ipLoacation.province) {
-            case "北京市":
-            case "北京":
-              posdesc = "北——京——欢迎你~~~";
-              break;
-            case "天津市":
-            case "天津":
-              posdesc = "讲段相声吧。";
-              break;
-            case "河北省":
-            case "河北":
-              posdesc = "山势巍巍成壁垒，天下雄关。铁马金戈由此向，无限江山。";
-              break;
-            case "山西省":
-            case "山西":
-              posdesc = "展开坐具长三尺，已占山河五百余。";
-              break;
-            case "内蒙古自治区":
-            case "内蒙古":
-              posdesc = "天苍苍，野茫茫，风吹草低见牛羊。";
-              break;
-            case "辽宁省":
-            case "辽宁":
-              posdesc = "我想吃烤鸡架！";
-              break;
-            case "吉林省":
-            case "吉林":
-              posdesc = "状元阁就是东北烧烤之王。";
-              break;
-            case "黑龙江省":
-            case "黑龙江":
-              posdesc = "很喜欢哈尔滨大剧院。";
-              break;
-            case "上海市":
-            case "上海":
-              posdesc = "众所周知，中国只有两个城市。";
-              break;
-            case "江苏省":
-            case "江苏":
-              if (
-                ipLoacation.city === "南京市" ||
-                ipLoacation.city === "南京"
-              ) {
-                posdesc = "这是我挺想去的城市啦。";
-              } else if (
-                ipLoacation.city === "苏州市" ||
-                ipLoacation.city === "苏州"
-              ) {
-                posdesc = "上有天堂，下有苏杭。";
-              } else {
-                posdesc = "散装是必须要散装的。";
-              }
-              break;
-            case "浙江省":
-            case "浙江":
-              posdesc = "东风渐绿西湖柳，雁已还人未南归。";
-              break;
-            case "安徽省":
-            case "安徽":
-              posdesc = "蚌埠住了，芜湖起飞。";
-              break;
-            case "福建省":
-            case "福建":
-              posdesc = "井邑白云间，岩城远带山。";
-              break;
-            case "江西省":
-            case "江西":
-              posdesc = "落霞与孤鹜齐飞，秋水共长天一色。";
-              break;
-            case "山东省":
-            case "山东":
-              posdesc = "遥望齐州九点烟，一泓海水杯中泻。";
-              break;
-            case "河南省":
-            case "河南":
-              if (
-                ipLoacation.city === "郑州市" ||
-                ipLoacation.city === "郑州"
-              ) {
-                posdesc = "豫州之域，天地之中。";
-              } else if (
-                ipLoacation.city === "南阳市" ||
-                ipLoacation.city === "南阳"
-              ) {
-                posdesc = "臣本布衣，躬耕于南阳。此南阳非彼南阳！";
-              } else if (
-                ipLoacation.city === "洛阳市" ||
-                ipLoacation.city === "洛阳"
-              ) {
-                posdesc = "洛阳牡丹甲天下。";
-              } else {
-                posdesc = "可否带我品尝河南烩面啦？";
-              }
-              break;
-            case "湖北省":
-            case "湖北":
-              posdesc = "来碗热干面！";
-              break;
-            case "湖南省":
-            case "湖南":
-              posdesc = "74751，长沙斯塔克。";
-              break;
-            case "广东省":
-            case "广东":
-              posdesc = "老板来两斤福建人。";
-              break;
-            case "广西壮族自治区":
-            case "广西":
-              posdesc = "桂林山水甲天下。";
-              break;
-            case "海南省":
-            case "海南":
-              posdesc = "朝观日出逐白浪，夕看云起收霞光。";
-              break;
-            case "四川省":
-            case "四川":
-              posdesc = "康康川妹子。";
-              break;
-            case "贵州省":
-            case "贵州":
-              posdesc = "茅台，学生，再塞200。";
-              break;
-            case "云南省":
-            case "云南":
-              posdesc = "玉龙飞舞云缠绕，万仞冰川直耸天。";
-              break;
-            case "西藏自治区":
-            case "西藏":
-              posdesc = "躺在茫茫草原上，仰望蓝天。";
-              break;
-            case "陕西省":
-            case "陕西":
-              posdesc = "来份臊子面加馍。";
-              break;
-            case "甘肃省":
-            case "甘肃":
-              posdesc = "羌笛何须怨杨柳，春风不度玉门关。";
-              break;
-            case "青海省":
-            case "青海":
-              posdesc = "牛肉干和老酸奶都好好吃。";
-              break;
-            case "宁夏回族自治区":
-            case "宁夏":
-              posdesc = "大漠孤烟直，长河落日圆。";
-              break;
-            case "新疆维吾尔自治区":
-            case "新疆":
-              posdesc = "驼铃古道丝绸路，胡马犹闻唐汉风。";
-              break;
-            case "台湾省":
-            case "台湾":
-              posdesc = "我在这头，大陆在那头。";
-              break;
-            case "香港特别行政区":
-            case "香港":
-              posdesc = "永定贼有残留地鬼嚎，迎击光非岁玉。";
-              break;
-            case "澳门特别行政区":
-            case "澳门":
-              posdesc = "性感荷官，在线发牌。";
-              break;
-            default:
-              if (isGitHubPages) {
-                posdesc = "感谢您访问我的GitHub Pages站点！";
-              } else {
-                posdesc = "带我去你的城市逛逛吧！";
-              }
-              break;
-          }
+      let posdesc = "";
+
+      // 根据省份或国家生成欢迎语
+      if (isGitHubPages && (pos === "未知位置" || pos === "GitHub的云端")) {
+        posdesc = "感谢您访问我的GitHub Pages站点！";
+      } else if (
+        ipLoacation.country_code === "CN" ||
+        ipLoacation.country === "中国"
+      ) {
+        // 国内访客
+        switch (ipLoacation.province) {
+          // ... (之前的省份 case 保持不变) ...
+          case "北京市":
+          case "北京":
+            posdesc = "北——京——欢迎你~~~";
+            break;
+          case "天津市":
+          case "天津":
+            posdesc = "讲段相声吧。";
+            break;
+          case "河北省":
+          case "河北":
+            posdesc = "山势巍巍成壁垒，天下雄关。铁马金戈由此向，无限江山。";
+            break;
+          case "山西省":
+          case "山西":
+            posdesc = "展开坐具长三尺，已占山河五百余。";
+            break;
+          case "内蒙古自治区":
+          case "内蒙古":
+            posdesc = "天苍苍，野茫茫，风吹草低见牛羊。";
+            break;
+          case "辽宁省":
+          case "辽宁":
+            posdesc = "我想吃烤鸡架！";
+            break;
+          case "吉林省":
+          case "吉林":
+            posdesc = "状元阁就是东北烧烤之王。";
+            break;
+          case "黑龙江省":
+          case "黑龙江":
+            posdesc = "很喜欢哈尔滨大剧院。";
+            break;
+          case "上海市":
+          case "上海":
+            posdesc = "众所周知，中国只有两个城市。";
+            break;
+          case "江苏省":
+          case "江苏":
+            if (ipLoacation.city === "南京市" || ipLoacation.city === "南京") {
+              posdesc = "这是我挺想去的城市啦。";
+            } else if (
+              ipLoacation.city === "苏州市" ||
+              ipLoacation.city === "苏州"
+            ) {
+              posdesc = "上有天堂，下有苏杭。";
+            } else {
+              posdesc = "散装是必须要散装的。";
+            }
+            break;
+          case "浙江省":
+          case "浙江":
+            posdesc = "东风渐绿西湖柳，雁已还人未南归。";
+            break;
+          case "安徽省":
+          case "安徽":
+            posdesc = "蚌埠住了，芜湖起飞。";
+            break;
+          case "福建省":
+          case "福建":
+            posdesc = "井邑白云间，岩城远带山。";
+            break;
+          case "江西省":
+          case "江西":
+            posdesc = "落霞与孤鹜齐飞，秋水共长天一色。";
+            break;
+          case "山东省":
+          case "山东":
+            posdesc = "遥望齐州九点烟，一泓海水杯中泻。";
+            break;
+          case "河南省":
+          case "河南":
+            if (ipLoacation.city === "郑州市" || ipLoacation.city === "郑州") {
+              posdesc = "豫州之域，天地之中。";
+            } else if (
+              ipLoacation.city === "南阳市" ||
+              ipLoacation.city === "南阳"
+            ) {
+              posdesc = "臣本布衣，躬耕于南阳。此南阳非彼南阳！";
+            } else if (
+              ipLoacation.city === "洛阳市" ||
+              ipLoacation.city === "洛阳"
+            ) {
+              posdesc = "洛阳牡丹甲天下。";
+            } else {
+              posdesc = "可否带我品尝河南烩面啦？";
+            }
+            break;
+          case "湖北省":
+          case "湖北":
+            posdesc = "来碗热干面！";
+            break;
+          case "湖南省":
+          case "湖南":
+            posdesc = "74751，长沙斯塔克。";
+            break;
+          case "广东省":
+          case "广东":
+            posdesc = "老板来两斤福建人。";
+            break;
+          case "广西壮族自治区":
+          case "广西":
+            posdesc = "桂林山水甲天下。";
+            break;
+          case "海南省":
+          case "海南":
+            posdesc = "朝观日出逐白浪，夕看云起收霞光。";
+            break;
+          case "四川省":
+          case "四川":
+            posdesc = "康康川妹子。";
+            break;
+          case "贵州省":
+          case "贵州":
+            posdesc = "茅台，学生，再塞200。";
+            break;
+          case "云南省":
+          case "云南":
+            posdesc = "玉龙飞舞云缠绕，万仞冰川直耸天。";
+            break;
+          case "西藏自治区":
+          case "西藏":
+            posdesc = "躺在茫茫草原上，仰望蓝天。";
+            break;
+          case "陕西省":
+          case "陕西":
+            posdesc = "来份臊子面加馍。";
+            break;
+          case "甘肃省":
+          case "甘肃":
+            posdesc = "羌笛何须怨杨柳，春风不度玉门关。";
+            break;
+          case "青海省":
+          case "青海":
+            posdesc = "牛肉干和老酸奶都好好吃。";
+            break;
+          case "宁夏回族自治区":
+          case "宁夏":
+            posdesc = "大漠孤烟直，长河落日圆。";
+            break;
+          case "新疆维吾尔自治区":
+          case "新疆":
+            posdesc = "驼铃古道丝绸路，胡马犹闻唐汉风。";
+            break;
+          case "台湾省":
+          case "台湾":
+            posdesc = "我在这头，大陆在那头。";
+            break;
+          case "香港特别行政区":
+          case "香港":
+            posdesc = "永定贼有残留地鬼嚎，迎击光非岁玉。";
+            break;
+          case "澳门特别行政区":
+          case "澳门":
+            posdesc = "性感荷官，在线发牌。";
+            break;
+          default:
+            if (pos !== "未知位置") {
+              posdesc = "带我去你的城市逛逛吧！";
+            } else {
+              posdesc = "很高兴在这里遇见你！"; // 位置未知时的默认问候
+            }
+            break;
         }
       } else {
         // 国际访客
         if (isGitHubPages) {
           posdesc = "Thank you for visiting my GitHub Pages site!";
+        } else if (ipLoacation.country) {
+          posdesc = `欢迎来自 ${ipLoacation.country} 的朋友！`;
         } else {
-          posdesc = "欢迎来自海外的朋友！";
+          posdesc = "欢迎来自远方的朋友！";
         }
       }
 
@@ -655,19 +543,13 @@ function showWelcome() {
       }
 
       // 显示包含位置信息的欢迎消息
-      let distanceInfo = "";
-      if (dist === "未知" || dist === 0) {
-        if (isGitHubPages) {
-          distanceInfo = "距离站长未知";
-        } else {
-          distanceInfo = `距离站长约 <span style="color:var(--theme-color)">${dist}</span> 公里`;
-        }
-      } else {
-        distanceInfo = `距离站长约 <span style="color:var(--theme-color)">${dist}</span> 公里`;
-      }
-
-      // 显示包含位置信息的欢迎消息
-      welcomeInfoElement.innerHTML = `<b><center>🎉 欢迎信息 🎉</center>&emsp;&emsp;欢迎来自 <span style="color:var(--theme-color)">${pos}</span> 的小伙伴，${timeChange}您现在${distanceInfo}，当前的位置为： <span style="color:var(--theme-color)">${ip}</span>， ${posdesc}</b>`;
+      welcomeInfoElement.innerHTML = `<b><center>🎉 欢迎信息 🎉</center>&emsp;&emsp;欢迎来自 <span style="color:var(--theme-color)">${pos}</span> 的小伙伴，${timeChange}您现在${distanceInfo}，${
+        ip !== "未能获取IP" && ip !== "GitHub Pages环境"
+          ? '当前的IP地址为： <span style="color:var(--theme-color)">' +
+            ip +
+            "</span>， "
+          : ""
+      }${posdesc}</b>`;
     } else {
       // API请求失败或数据不完整，显示默认欢迎信息
       welcomeInfoElement.innerHTML = `<b><center>🎉 欢迎信息 🎉</center>&emsp;&emsp;欢迎访问本站！${timeChange}很高兴遇见你~</b>`;
@@ -686,14 +568,21 @@ function showWelcome() {
 }
 
 // 如果在页面加载完成后位置信息还未就绪，也显示一个默认欢迎信息
-window.onload = function () {
-  if (!ipInfoReady) {
-    showWelcome();
-  }
-};
+// window.onload = function() {
+//   // 使用 setTimeout 确保在其他脚本执行后检查
+//   setTimeout(() => {
+//     if (!ipInfoReady) {
+//       console.log("页面加载完成但位置信息未就绪，显示默认欢迎信息");
+//       useDefaultLocation(window.location.hostname.endsWith('github.io')); // 使用默认位置并传递环境信息
+//     }
+//   }, 1000); // 延迟1秒检查
+// };
 
 // 如果使用了pjax在加上下面这行代码
-document.addEventListener("pjax:complete", showWelcome);
+document.addEventListener("pjax:complete", function () {
+  console.log("PJAX complete, fetching location data again.");
+  fetchLocationData();
+});
 
 /* 欢迎信息 end */
 
