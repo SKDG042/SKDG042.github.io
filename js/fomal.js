@@ -127,53 +127,90 @@ function showWelcome() {
     else if (hour >= 18 && hour < 22) timeDesc = "晚上好，放松一下吧！";
     else timeDesc = "夜深了，早点睡吧！";
 
-    // --- Position logic (using the refined formatting from previous step) ---
+    // --- Position logic (Improved) ---
     let pos = "网络世界"; // Default position
+    const province = ipLoacation.province || "";
+    const city = ipLoacation.city || "";
+    const district = ipLoacation.district || "";
+    const country = ipLoacation.country || "";
+
+    const specialAdminRegions = ["香港", "澳门", "Hong Kong", "Macao", "Macau"];
+
+    // Priority for SARs based on city or province name
+    let isSAR = false;
     if (
-      ipLoacation.province &&
-      ipLoacation.province !== "未知位置" &&
-      ipLoacation.province !== "GitHub的云端"
+      specialAdminRegions.some((sar) => city.includes(sar)) ||
+      specialAdminRegions.some((sar) => province.includes(sar))
     ) {
-      let provinceName = (ipLoacation.province || "")
-        .replace("省", "")
-        .replace("市", "") // Remove 市 for municipalities used as province
-        .replace("自治区", "") // Remove 自治区
-        .replace("特别行政区", "") // Remove 特别行政区
-        .replace("壮族", "") // Abbreviate Guangxi
-        .replace("回族", ""); // Abbreviate Ningxia
-      let cityName = (ipLoacation.city || "").replace("市", "");
-      let districtName = (ipLoacation.district || "")
-        .replace("区", "")
-        .replace("县", "");
+      if (province.includes("香港") || city.includes("Hong Kong")) {
+        pos = "香港";
+        isSAR = true;
+      } else if (
+        province.includes("澳门") ||
+        city.includes("Macao") ||
+        city.includes("Macau")
+      ) {
+        pos = "澳门";
+        isSAR = true;
+      }
+    }
 
-      const directAdminCities = ["北京", "上海", "天津", "重庆"];
-      const specialAdminRegions = ["香港", "澳门"];
+    // If SAR logic didn't set pos, continue with existing logic
+    if (!isSAR) {
+      if (
+        province &&
+        province !== "未知位置" &&
+        province !== "GitHub的云端" &&
+        province !== "未知份" // Explicitly ignore "未知份"
+      ) {
+        let provinceName = province
+          .replace("省", "")
+          .replace("市", "") // Remove 市 for municipalities used as province
+          .replace("自治区", "")
+          .replace("特别行政区", "")
+          .replace("壮族", "")
+          .replace("回族", "");
+        let cityName = city.replace("市", "");
+        let districtName = district.replace("区", "").replace("县", "");
 
-      if (directAdminCities.includes(provinceName)) {
-        pos = provinceName;
-        if (districtName && districtName !== provinceName) {
-          pos += " " + districtName;
-        }
-      } else if (specialAdminRegions.includes(provinceName)) {
-        pos = provinceName;
-      } else {
-        pos = provinceName;
-        if (cityName && cityName !== provinceName) {
-          pos += " " + cityName;
-        }
-        if (districtName) {
-          if (!cityName || districtName !== cityName) {
+        const directAdminCities = ["北京", "上海", "天津", "重庆"];
+
+        if (directAdminCities.includes(provinceName)) {
+          pos = provinceName;
+          if (districtName && districtName !== provinceName) {
             pos += " " + districtName;
           }
+        } else {
+          // Standard Province logic
+          pos = provinceName;
+          if (cityName && cityName !== provinceName) {
+            pos += " " + cityName;
+          }
+          if (districtName) {
+            // Avoid adding district if it's the same as city or province
+            if (
+              (!cityName || districtName !== cityName) &&
+              districtName !== provinceName
+            ) {
+              pos += " " + districtName;
+            }
+          }
         }
+      } else if (country && country !== "中国" && country !== "China") {
+        pos = country; // Show country name if not China
+      } else if (province === "GitHub的云端") {
+        pos = "GitHub的云端";
+      } else {
+        // Fallback if province is '未知位置', '未知份' or empty, and city is not SAR
+        pos = city || "某个角落"; // Use city if available, otherwise fallback
       }
-    } else if (ipLoacation.country && ipLoacation.country !== "中国") {
-      pos = ipLoacation.country; // Show country name if not China
-    } else if (ipLoacation.province === "GitHub的云端") {
-      pos = "GitHub的云端"; // Special case for GitHub Pages default
-    } else {
-      pos = "某个角落"; // Fallback if province is '未知位置' or empty
     }
+
+    // Final refinement: Check if pos ended up as just "未知份", if so, use city or fallback
+    if (pos === "未知份") {
+      pos = city || "某个角落";
+    }
+    // --- Position logic end ---
 
     // --- Distance logic (Assuming getDistance function exists and site owner coords are set) ---
     let distanceText = "";
