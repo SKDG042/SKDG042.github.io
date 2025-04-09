@@ -90,6 +90,142 @@ function scrollToTop() {
 let ipLoacation = null;
 let ipInfoReady = false;
 
+// NEW showWelcome Function Definition
+function showWelcome() {
+  console.log("ipLoacation before showWelcome:", JSON.stringify(ipLoacation)); // Log the final data
+
+  const welcomeElement = document.getElementById("welcome-info"); // Target element ID
+  if (!welcomeElement) {
+    console.error("Welcome element #welcome-info not found.");
+    return; // Exit if target element doesn't exist
+  }
+
+  if (!ipLoacation) {
+    console.log("ipLoacation is null, cannot show welcome.");
+    welcomeElement.innerHTML = "<p>无法获取您的位置信息，但仍然欢迎您！</p>"; // Default message
+    return;
+  }
+
+  try {
+    // --- Time logic ---
+    const time = new Date();
+    const hour = time.getHours();
+    let hello = "";
+    if (hour >= 0 && hour < 5) hello = "午夜";
+    else if (hour >= 5 && hour < 11) hello = "上午";
+    else if (hour >= 11 && hour < 13) hello = "中午";
+    else if (hour >= 13 && hour < 17) hello = "下午";
+    else if (hour >= 17 && hour < 19) hello = "傍晚";
+    else hello = "晚上";
+
+    let timeDesc = "";
+    if (hour >= 0 && hour < 6) timeDesc = "凌晨了，注意休息哦！";
+    else if (hour >= 6 && hour < 9) timeDesc = "早上好，今天也要元气满满！";
+    else if (hour >= 9 && hour < 12) timeDesc = "上午好！";
+    else if (hour >= 12 && hour < 14) timeDesc = "中午好，记得午休！";
+    else if (hour >= 14 && hour < 18) timeDesc = "下午好，摸鱼还是奋斗？";
+    else if (hour >= 18 && hour < 22) timeDesc = "晚上好，放松一下吧！";
+    else timeDesc = "夜深了，早点睡吧！";
+
+    // --- Position logic (using the refined formatting from previous step) ---
+    let pos = "网络世界"; // Default position
+    if (
+      ipLoacation.province &&
+      ipLoacation.province !== "未知位置" &&
+      ipLoacation.province !== "GitHub的云端"
+    ) {
+      let provinceName = (ipLoacation.province || "")
+        .replace("省", "")
+        .replace("市", "") // Remove 市 for municipalities used as province
+        .replace("自治区", "") // Remove 自治区
+        .replace("特别行政区", "") // Remove 特别行政区
+        .replace("壮族", "") // Abbreviate Guangxi
+        .replace("回族", ""); // Abbreviate Ningxia
+      let cityName = (ipLoacation.city || "").replace("市", "");
+      let districtName = (ipLoacation.district || "")
+        .replace("区", "")
+        .replace("县", "");
+
+      const directAdminCities = ["北京", "上海", "天津", "重庆"];
+      const specialAdminRegions = ["香港", "澳门"];
+
+      if (directAdminCities.includes(provinceName)) {
+        pos = provinceName;
+        if (districtName && districtName !== provinceName) {
+          pos += " " + districtName;
+        }
+      } else if (specialAdminRegions.includes(provinceName)) {
+        pos = provinceName;
+      } else {
+        pos = provinceName;
+        if (cityName && cityName !== provinceName) {
+          pos += " " + cityName;
+        }
+        if (districtName) {
+          if (!cityName || districtName !== cityName) {
+            pos += " " + districtName;
+          }
+        }
+      }
+    } else if (ipLoacation.country && ipLoacation.country !== "中国") {
+      pos = ipLoacation.country; // Show country name if not China
+    } else if (ipLoacation.province === "GitHub的云端") {
+      pos = "GitHub的云端"; // Special case for GitHub Pages default
+    } else {
+      pos = "某个角落"; // Fallback if province is '未知位置' or empty
+    }
+
+    // --- Distance logic (Assuming getDistance function exists and site owner coords are set) ---
+    let distanceText = "";
+    // Define site owner's coordinates here (replace with actual coordinates)
+    const ownerLat = 29.521599; // Your Latitude
+    const ownerLon = 106.606387; // Your Longitude
+    if (
+      ipLoacation.latitude &&
+      ipLoacation.longitude &&
+      ipLoacation.latitude !== 0 &&
+      ipLoacation.longitude !== 0
+    ) {
+      const dist = getDistance(
+        ownerLat,
+        ownerLon,
+        ipLoacation.latitude,
+        ipLoacation.longitude
+      );
+      distanceText = `您现在距离站长约 ${dist} 公里，`;
+    }
+
+    // --- Build welcome message ---
+    const ipAddressText = ipLoacation.ip ? ` (IP: ${ipLoacation.ip})` : ""; // Add IP if available
+    const welcomeString = `🎉 欢迎来自 <span style="color:var(--theme-color);font-weight:bold;">${pos}</span>${ipAddressText} 的小伙伴，${hello}好！<br>${timeDesc}<br>${distanceText}带我去你的城市逛逛吧！`;
+
+    // --- Display welcome message ---
+    welcomeElement.innerHTML = welcomeString;
+  } catch (err) {
+    console.error("Error in showWelcome function:", err);
+    welcomeElement.innerHTML = "<p>加载欢迎信息时出错啦~</p>"; // Error message
+  }
+}
+
+// Original getDistance function (ensure it exists or add it if missing)
+function getDistance(lat1, lng1, lat2, lng2) {
+  var radLat1 = (lat1 * Math.PI) / 180.0;
+  var radLat2 = (lat2 * Math.PI) / 180.0;
+  var a = radLat1 - radLat2;
+  var b = (lng1 * Math.PI) / 180.0 - (lng2 * Math.PI) / 180.0;
+  var s =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.pow(Math.sin(a / 2), 2) +
+          Math.cos(radLat1) * Math.cos(radLat2) * Math.pow(Math.sin(b / 2), 2)
+      )
+    );
+  s = s * 6378.137; // EARTH_RADIUS;
+  s = Math.round(s * 10000) / 10000;
+  return s.toFixed(0); // Return distance rounded to 0 decimal places
+}
+
 // 获取位置信息 - 使用 GeoJS API 和 高德地图API 结合
 function fetchLocationData() {
   // 检查当前环境是否为本地或GitHub Pages
