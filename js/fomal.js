@@ -4253,6 +4253,7 @@ function fetchDetailedAddressFromCoords(latitude, longitude) {
 
 // NEW Function to decide whether to refine and show
 function refineLocationAndShow() {
+  console.log("ipLoacation before refine:", JSON.stringify(ipLoacation)); // <--- Added Log
   ipInfoReady = true; // Mark info as ready before potentially async reverse geocoding
   if (
     ipLoacation &&
