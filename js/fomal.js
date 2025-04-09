@@ -105,18 +105,30 @@ function fetchLocationData() {
     dataType: "json",
     success: function (res) {
       console.log("GeoJS位置API响应成功:", res);
-      ipLoacation = {
-        ip: res.ip || "未能获取IP",
-        country: res.country || "未知国家",
-        province: res.region || "未知省份", // GeoJS 使用 region
-        city: res.city || "",
-        district: "", // GeoJS 不提供区县
-        longitude: parseFloat(res.longitude || 0),
-        latitude: parseFloat(res.latitude || 0),
-        country_code: res.country_code,
-      };
-      ipInfoReady = true;
-      showWelcome();
+
+      // 检查是否是中国地区且缺少省份信息
+      const isChina = res.country_code === "CN" || res.country === "China";
+      const hasProvince = res.region && res.region !== "未知省份"; // GeoJS 使用 region 作为省份
+
+      if (isChina && !hasProvince) {
+        // 如果是中国地区但GeoJS未提供省份，强制使用高德API获取更详细信息
+        console.log("GeoJS未能获取中国省份信息，尝试使用高德API");
+        fallbackToDirectAmap(isGitHubPages); // 传递 GitHub Pages 状态
+      } else {
+        // 对于非中国地区，或GeoJS已提供中国省份信息，直接使用GeoJS结果
+        ipLoacation = {
+          ip: res.ip || "未能获取IP",
+          country: res.country || "未知国家",
+          province: res.region || "未知省份", // GeoJS 使用 region
+          city: res.city || "",
+          district: "", // GeoJS 不提供区县
+          longitude: parseFloat(res.longitude || 0),
+          latitude: parseFloat(res.latitude || 0),
+          country_code: res.country_code,
+        };
+        ipInfoReady = true;
+        showWelcome();
+      }
     },
     error: function (err) {
       console.log("GeoJS获取位置API请求失败:", err);
@@ -355,7 +367,7 @@ function showWelcome() {
 
       // 根据省份或国家生成欢迎语
       if (isGitHubPages && (pos === "未知位置" || pos === "GitHub的云端")) {
-        posdesc = "感谢您访问我的GitHub Pages站点！";
+        posdesc = "感谢您访问我的小破站♪！"; // 修改结尾文本
       } else if (
         ipLoacation.country_code === "CN" ||
         ipLoacation.country === "中国"
@@ -522,14 +534,14 @@ function showWelcome() {
             if (pos !== "未知位置") {
               posdesc = "带我去你的城市逛逛吧！";
             } else {
-              posdesc = "很高兴在这里遇见你！"; // 位置未知时的默认问候
+              posdesc = "感谢您访问我的小破站♪！"; // 修改结尾文本
             }
             break;
         }
       } else {
         // 国际访客
         if (isGitHubPages) {
-          posdesc = "Thank you for visiting my GitHub Pages site!";
+          posdesc = "Thank you for visiting my site♪!"; // 修改结尾文本
         } else if (ipLoacation.country) {
           posdesc = `欢迎来自 ${ipLoacation.country} 的朋友！`;
         } else {
