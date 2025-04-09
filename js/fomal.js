@@ -4190,3 +4190,81 @@ function toggleWinbox() {
 
 // 初始化调用
 fetchLocationData();
+
+// NEW Function for Reverse Geocoding
+function fetchDetailedAddressFromCoords(latitude, longitude) {
+  console.log(`尝试使用经纬度 (${latitude}, ${longitude}) 获取详细地址`);
+  $.ajax({
+    type: "get",
+    url: "https://restapi.amap.com/v3/geocode/regeo",
+    data: {
+      key: "b1e9effb2d59fc94c2b19a1c73fc7ed2", // Your Amap Key
+      location: `${longitude},${latitude}`, // longitude first, then latitude
+      output: "json",
+      extensions: "base", // Use 'base' for addressComponent
+    },
+    dataType: "json",
+    success: function (data) {
+      console.log("高德逆地理编码API成功:", data);
+      if (
+        data &&
+        data.status === "1" &&
+        data.regeocode &&
+        data.regeocode.addressComponent
+      ) {
+        const addr = data.regeocode.addressComponent;
+        // Update ipLoacation with more detailed info, checking if fields exist
+        if (addr.province)
+          ipLoacation.province = Array.isArray(addr.province)
+            ? addr.province[0] || ipLoacation.province
+            : addr.province; // Handle empty array case? Amap usually returns string.
+        if (addr.city)
+          ipLoacation.city = Array.isArray(addr.city)
+            ? addr.city[0] || ipLoacation.city
+            : addr.city; // Handle empty city (like direct admin municipalities)
+        if (addr.district)
+          ipLoacation.district = Array.isArray(addr.district)
+            ? addr.district[0] || ""
+            : addr.district; // Use district
+
+        // Handle cases like Beijing, Shanghai where city might be empty in addressComponent
+        if (
+          !ipLoacation.city &&
+          (ipLoacation.province === "北京市" ||
+            ipLoacation.province === "上海市" ||
+            ipLoacation.province === "天津市" ||
+            ipLoacation.province === "重庆市")
+        ) {
+          ipLoacation.city = ipLoacation.province; // Use province name as city for these cases if city is empty
+        }
+      } else {
+        console.log("高德逆地理编码未返回有效地址组件");
+      }
+      // Always call showWelcome after attempting reverse geocoding
+      showWelcome();
+    },
+    error: function (err) {
+      console.log("高德逆地理编码API失败:", err);
+      // Call showWelcome even on error, using potentially less detailed info
+      showWelcome();
+    },
+  });
+}
+
+// NEW Function to decide whether to refine and show
+function refineLocationAndShow() {
+  ipInfoReady = true; // Mark info as ready before potentially async reverse geocoding
+  if (
+    ipLoacation &&
+    ipLoacation.latitude &&
+    ipLoacation.longitude &&
+    ipLoacation.latitude !== 0 &&
+    ipLoacation.longitude !== 0
+  ) {
+    // Only call reverse geocoding if we have valid coordinates
+    fetchDetailedAddressFromCoords(ipLoacation.latitude, ipLoacation.longitude);
+  } else {
+    console.log("无有效经纬度，直接显示欢迎信息");
+    showWelcome(); // Show welcome directly if no coords
+  }
+}
