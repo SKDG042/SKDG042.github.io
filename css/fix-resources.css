@@ -1,0 +1,36 @@
+/* 修复资源加载错误的 CSS */
+
+/* 修复霞鹜文楷字体加载错误 */
+@font-face {
+  font-family: "XiaWuWenKai";
+  src: local("SimSun"),
+    /* 使用系统自带的宋体作为备用 */ local("Microsoft YaHei"); /* 使用系统自带的微软雅黑作为备用 */
+  font-display: swap;
+}
+
+/* 为无法加载的背景图像提供备用颜色 */
+[style*="lskypro.acozycotage.net"] {
+  background-color: #f5f5f5 !important; /* 浅灰色作为备用 */
+  background-image: none !important; /* 移除失败的背景图像 */
+}
+
+/* 修复卡片背景 */
+.img-group-item img[src*="lskypro.acozycotage.net"] {
+  background-color: #e0e0e0 !important;
+  content: url("/img/default.png") !important; /* 使用默认图像替代，需要确保该路径存在 */
+}
+
+/* 添加全局错误处理，防止资源加载失败影响页面 */
+img {
+  min-height: 20px;
+  min-width: 20px;
+}
+
+img:before {
+  content: " ";
+  display: block;
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  background-color: #f5f5f5;
+}

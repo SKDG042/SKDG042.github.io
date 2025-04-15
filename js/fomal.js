@@ -127,7 +127,7 @@ function showWelcome() {
     else if (hour >= 18 && hour < 22) timeDesc = "晚上好，放松一下吧！";
     else timeDesc = "夜深了，早点睡吧！";
 
-    // --- Position logic (Improved) ---
+    // --- Position logic (Improved & Corrected Formatting) ---
     let pos = "网络世界"; // Default position
     // Ensure province, city, district, country are strings or empty strings
     const province =
@@ -138,81 +138,40 @@ function showWelcome() {
     const country =
       typeof ipLoacation.country === "string" ? ipLoacation.country : "";
 
-    const specialAdminRegions = ["香港", "澳门", "Hong Kong", "Macao", "Macau"];
+    let formattedCity = city;
+    if (city && !city.endsWith("市") && city !== "香港" && city !== "澳门") {
+      formattedCity += "市"; // Add '市' if missing and not SAR
+    }
 
-    // Priority for SARs based on city or province name
-    let isSAR = false;
-    if (
-      specialAdminRegions.some((sar) => city.includes(sar)) ||
-      specialAdminRegions.some((sar) => province.includes(sar))
+    // 优先使用 城市市+区县 格式
+    if (formattedCity && district) {
+      pos = formattedCity + " " + district;
+    } else if (formattedCity) {
+      pos = formattedCity; // 只有城市
+    } else if (district) {
+      pos = district; // 只有区县
+    } else if (province && province !== "未知省份" && province !== "网络世界") {
+      // 只有省份 (确保是有效省份)
+      pos = province
+        .replace("省", "")
+        .replace("自治区", "")
+        .replace("特别行政区", "");
+      if (province !== "香港" && province !== "澳门" && !pos.endsWith("市")) {
+        pos += "省"; // Add '省' for provinces if needed, avoid for municipalities/SARs
+      }
+    } else if (country && country !== "中国" && country !== "China") {
+      pos = country; // 显示国家（非中国）
+    }
+
+    // Handle SAR specifically to override potential incorrect formatting
+    if (province.includes("香港") || city.includes("Hong Kong")) {
+      pos = "香港";
+    } else if (
+      province.includes("澳门") ||
+      city.includes("Macao") ||
+      city.includes("Macau")
     ) {
-      if (province.includes("香港") || city.includes("Hong Kong")) {
-        pos = "香港";
-        isSAR = true;
-      } else if (
-        province.includes("澳门") ||
-        city.includes("Macao") ||
-        city.includes("Macau")
-      ) {
-        pos = "澳门";
-        isSAR = true;
-      }
-    }
-
-    // If SAR logic didn't set pos, continue with existing logic
-    if (!isSAR) {
-      if (
-        province &&
-        province !== "未知位置" &&
-        province !== "GitHub的云端" &&
-        province !== "未知份" // Explicitly ignore "未知份"
-      ) {
-        let provinceName = province
-          .replace("省", "")
-          .replace("市", "") // Remove 市 for municipalities used as province
-          .replace("自治区", "")
-          .replace("特别行政区", "")
-          .replace("壮族", "")
-          .replace("回族", "");
-        let cityName = city.replace("市", "");
-        let districtName = district.replace("区", "").replace("县", "");
-
-        const directAdminCities = ["北京", "上海", "天津", "重庆"];
-
-        if (directAdminCities.includes(provinceName)) {
-          pos = provinceName;
-          if (districtName && districtName !== provinceName) {
-            pos += " " + districtName;
-          }
-        } else {
-          // Standard Province logic
-          pos = provinceName;
-          if (cityName && cityName !== provinceName) {
-            pos += " " + cityName;
-          }
-          if (districtName) {
-            // Avoid adding district if it's the same as city or province
-            if (
-              (!cityName || districtName !== cityName) &&
-              districtName !== provinceName
-            ) {
-              pos += " " + districtName;
-            }
-          }
-        }
-      } else if (country && country !== "中国" && country !== "China") {
-        pos = country; // Show country name if not China
-      } else if (province === "GitHub的云端") {
-        pos = "GitHub的云端";
-      } else {
-        // Fallback if province is '未知位置', '未知份' or empty, and city is not SAR
-        pos = city || "某个角落"; // Use city if available, otherwise fallback
-      }
-    }
-
-    // Final refinement: Check if pos ended up as just "未知份", if so, use city or fallback
-    if (pos === "未知份") {
-      pos = city || "某个角落";
+      pos = "澳门";
     }
     // --- Position logic end ---
 
@@ -267,140 +226,104 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return s.toFixed(0); // Return distance rounded to 0 decimal places
 }
 
-// 获取位置信息 - 新逻辑：优先高德，GeoJS补充IP或备用
+// 获取位置信息 - 仅使用腾讯地图 API
 function fetchLocationData() {
-  const isGitHubPages = window.location.hostname.endsWith("github.io");
-
-  // 1. 优先尝试高德API
   $.ajax({
     type: "get",
-    url: "https://restapi.amap.com/v3/ip",
+    url: "https://apis.map.qq.com/ws/location/v1/ip",
     data: {
-      key: "b1e9effb2d59fc94c2b19a1c73fc7ed2",
+      key: "OYHBZ-7LSKG-HTFQC-Q26FM-DQAPK-RLBMO", // 腾讯地图 Key
+      output: "jsonp", // 使用 jsonp 解决跨域问题
     },
-    dataType: "json",
+    dataType: "jsonp", // 指定 dataType 为 jsonp
     success: function (data) {
-      console.log("高德地图 API 响应成功:", data);
-      if (
-        data &&
-        data.status === "1" &&
-        data.province &&
-        data.province !== "局域网"
-      ) {
-        // 高德成功且数据有效
-        ipLoacation = {
-          ip: null, // IP 待 GeoJS 补充
-          country: "中国",
-          province: data.province || "未知省份",
-          city: data.city || "",
-          district: "", // 高德IP定位不直接返回区县
-          longitude: 0,
-          latitude: 0,
-          adcode: data.adcode,
-          rectangle: data.rectangle,
-        };
-        // 解析经纬度
-        if (data.rectangle) {
-          try {
-            let rectArray = data.rectangle.split(";");
-            if (rectArray.length > 0) {
-              let coords = rectArray[0].split(",");
-              if (coords.length >= 2) {
-                ipLoacation.longitude = parseFloat(coords[0]);
-                ipLoacation.latitude = parseFloat(coords[1]);
-              }
-            }
-          } catch (e) {
-            console.log("解析高德经纬度数据出错:", e);
+      console.log("腾讯地图 IP API 原始响应对象:", data); // <-- 打印原始对象
+      try {
+        if (data && data.status === 0 && data.result) {
+          // 腾讯成功且数据有效 (status=0)
+          console.log(
+            "腾讯地图 IP API 状态码 (status):",
+            data ? data.status : "无data对象"
+          );
+          const result = data.result;
+          ipLoacation = {
+            ip: result.ip || "未能获取IP",
+            country: result.ad_info.nation || "未知国家",
+            province: result.ad_info.province || "未知省份",
+            city: result.ad_info.city || "",
+            district: result.ad_info.district || "",
+            longitude: result.location.lng || 0, // 腾讯用 lng
+            latitude: result.location.lat || 0, // 腾讯用 lat
+            adcode: result.ad_info.adcode,
+          };
+          // console.log("成功赋值后的 ipLoacation:", JSON.stringify(ipLoacation)); // Temporarily comment out
+          console.log("ipLoacation object created.");
+          ipInfoReady = true;
+
+          // --- 获取天气 ---
+          console.log("即将检查 adcode 并尝试获取天气...");
+          if (ipLoacation.adcode) {
+            console.log("adcode is valid, calling fetchWeatherData...");
+            console.log(`准备使用 adcode「${ipLoacation.adcode}」获取天气。`);
+            fetchWeatherData(ipLoacation.adcode);
+          } else {
+            console.log("adcode check failed.");
+            console.log(
+              "无法获取 adcode，无法获取天气。ipLoacation: ",
+              JSON.stringify(ipLoacation)
+            );
+            clearWeatherInfo();
           }
+          // --- 获取天气结束 ---
+
+          showWelcome(); // 在成功处理的最后调用
+        } else {
+          // 腾讯失败或数据无效 (仍在 try 块内处理)
+          console.log(
+            "腾讯地图返回无效数据或失败状态:",
+            data ? data.message || `status: ${data.status}` : "无data对象"
+          );
+          useDefaultLocation();
         }
-        // 调用 GeoJS 获取 IP
-        fetchGeoJSForIP();
-      } else {
-        // 高德失败或数据无效，回退到 GeoJS
-        console.log("高德数据无效或失败，回退到 GeoJS");
-        fallbackToGeoJS(isGitHubPages);
+      } catch (e) {
+        console.error("处理腾讯地图 IP API 成功响应时发生错误:", e); // 更具体的错误信息
+        useDefaultLocation(); // 发生错误时也使用默认位置
       }
     },
-    error: function (err) {
-      console.log("高德地图 API 请求失败:", err);
-      // 高德请求失败，回退到 GeoJS
-      fallbackToGeoJS(isGitHubPages);
+    error: function (jqXHR, textStatus, errorThrown) {
+      console.error(
+        "腾讯地图 IP API 请求失败: Status=",
+        textStatus,
+        "Error=",
+        errorThrown
+      ); // <-- 修改日志：更详细的错误
+      console.error("腾讯地图 IP API 失败响应:", jqXHR.responseText); // <-- 新增日志：打印响应文本
+      // 请求失败，使用默认位置
+      useDefaultLocation();
     },
   });
 }
 
-// 新增：仅从 GeoJS 获取 IP 并补充到已有的 ipLocation
-function fetchGeoJSForIP() {
-  $.ajax({
-    type: "get",
-    url: "https://get.geojs.io/v1/ip/geo.json",
-    dataType: "json",
-    success: function (res) {
-      console.log("GeoJS IP 获取成功:", res);
-      if (ipLoacation) {
-        ipLoacation.ip = res.ip || "未能获取IP";
-      }
-      refineLocationAndShow(); // 获取到IP后进行后续处理
-    },
-    error: function (err) {
-      console.log("GeoJS IP 获取失败:", err);
-      if (ipLoacation && !ipLoacation.ip) {
-        ipLoacation.ip = "未能获取IP";
-      }
-      refineLocationAndShow(); // 即使IP获取失败，也要继续显示
-    },
-  });
-}
-
-// 新增：高德失败后的备用方案，尝试 GeoJS
-function fallbackToGeoJS(isGitHubPages) {
-  $.ajax({
-    type: "get",
-    url: "https://get.geojs.io/v1/ip/geo.json",
-    dataType: "json",
-    success: function (res) {
-      console.log("GeoJS (Fallback) 响应成功:", res);
-      ipLoacation = {
-        ip: res.ip || "未能获取IP",
-        country: res.country || "未知国家",
-        province: res.region || "未知省份", // GeoJS 使用 region
-        city: res.city || "",
-        district: "", // GeoJS 不提供区县
-        longitude: parseFloat(res.longitude || 0),
-        latitude: parseFloat(res.latitude || 0),
-        country_code: res.country_code,
-      };
-      refineLocationAndShow(); // 使用 GeoJS 数据进行后续处理
-    },
-    error: function (err) {
-      console.log("GeoJS (Fallback) 请求失败:", err);
-      // 双重失败，使用默认位置
-      useDefaultLocation(isGitHubPages);
-    },
-  });
-}
-
-// 修改：移除 ipProvidedByGeoJS 参数
-function useDefaultLocation(isGitHubPages) {
-  let ipToShow = isGitHubPages ? "GitHub Pages环境" : "未能获取位置";
-  let posToShow = isGitHubPages ? "GitHub的云端" : "未知位置";
+// 修改：移除 isGitHubPages 参数，直接调用 showWelcome
+function useDefaultLocation() {
+  // let ipToShow = isGitHubPages ? "GitHub Pages环境" : "未能获取位置"; // 不再需要判断环境
+  // let posToShow = isGitHubPages ? "GitHub的云端" : "未知位置";
 
   // --- 更新 ipLoacation ---
   if (!ipLoacation) ipLoacation = {}; // 初始化
-  ipLoacation.ip = ipToShow;
+  ipLoacation.ip = "未能获取位置";
   ipLoacation.country = "中国"; // 默认中国
-  ipLoacation.province = posToShow;
+  ipLoacation.province = "网络世界"; // 更通用的默认值
   ipLoacation.city = "";
   ipLoacation.district = "";
-  // 设为北京天安门坐标
-  if (ipLoacation.longitude === undefined || ipLoacation.longitude === 0)
-    ipLoacation.longitude = 116.403963;
-  if (ipLoacation.latitude === undefined || ipLoacation.latitude === 0)
-    ipLoacation.latitude = 39.915119;
+  // 设为站长坐标或天安门坐标作为备用
+  ipLoacation.longitude = 106.606387;
+  ipLoacation.latitude = 29.521599;
   // --- 更新 ipLoacation 结束 ---
 
-  refineLocationAndShow(); // 使用默认位置数据进行后续处理
+  ipInfoReady = true;
+  showWelcome(); // 使用默认位置数据直接显示
+  clearWeatherInfo(); // 清除天气信息
 }
 
 // 初始化调用
@@ -4397,5 +4320,121 @@ function refineLocationAndShow() {
   } else {
     console.log("无有效经纬度，直接显示欢迎信息");
     showWelcome(); // Show welcome directly if no coords
+  }
+}
+
+// 新增：获取天气数据
+function fetchWeatherData(adcode) {
+  console.log(`尝试为 adcode「${adcode}」获取天气数据`);
+
+  const key = "OYHBZ-7LSKG-HTFQC-Q26FM-DQAPK-RLBMO";
+  const url = "https://apis.map.qq.com/ws/weather/v1/";
+
+  const attemptWeatherRequest = (adcodeToTry) => {
+    console.log(`天气请求: adcode=${adcodeToTry}`);
+    const params = {
+      key: key,
+      adcode: adcodeToTry, // 使用 adcode 参数
+      output: "jsonp",
+    };
+    $.ajax({
+      type: "get",
+      url: url,
+      data: params,
+      dataType: "jsonp",
+      success: function (data) {
+        console.log(
+          `天气 API 响应 (adcode: ${adcodeToTry}):`,
+          JSON.stringify(data)
+        ); // Log full response
+        if (data && data.status === 0 && data.result && data.result.live) {
+          displayWeather(
+            data.result.realtime, // 文档中实时天气在 realtime 字段下
+            data.result.forecast ? data.result.forecast[0] : null // 文档中1小时预报在 forecast 下 (如果需要的话，当前显示函数未使用)
+          );
+        } else {
+          console.log(
+            `天气 API (adcode: ${adcodeToTry}) 未返回有效数据:`,
+            data.message || `状态码: ${data.status}`
+          );
+          clearWeatherInfo(); // 请求失败则清除天气
+        }
+      },
+      error: function (jqXHR, textStatus, errorThrown) {
+        console.error(
+          `天气 API 请求失败 (adcode: ${adcodeToTry}):`,
+          textStatus,
+          errorThrown,
+          jqXHR.responseText
+        );
+        clearWeatherInfo(); // 请求失败则清除天气
+      },
+    });
+  };
+
+  // 直接使用 adcode 发起请求
+  attemptWeatherRequest(adcode);
+}
+
+// 修改：改进天气信息显示
+function displayWeather(realtimeWeatherData, forecastData) {
+  // 参数名修改以匹配文档
+  const weatherElement = document.getElementById("weather-info");
+  if (!weatherElement) {
+    console.log("天气显示元素 #weather-info 未找到。");
+    return;
+  }
+
+  const infos = realtimeWeatherData.infos;
+  const weather = infos.weather || "未知";
+  const temp = infos.temperature || "未知";
+  const humidity = infos.humidity || "未知";
+  const windDir = infos.wind_direction || "未知风向";
+  const windPower = infos.wind_power || "未知风力";
+
+  // 添加可能的降水概率信息
+  let precipInfo = "";
+  if (forecastData && forecastData.precipitation) {
+    const precip = parseInt(forecastData.precipitation);
+    if (precip > 0) {
+      precipInfo = ` 降水概率 ${precip}%`;
+    }
+  }
+
+  // 使用带有图标的天气样式
+  let weatherIcon = "🌤️"; // 默认图标
+
+  // 根据天气状况选择合适的图标
+  if (weather.includes("晴")) {
+    weatherIcon = "☀️";
+  } else if (weather.includes("多云")) {
+    weatherIcon = "⛅";
+  } else if (weather.includes("阴")) {
+    weatherIcon = "☁️";
+  } else if (weather.includes("雨")) {
+    if (weather.includes("雷")) {
+      weatherIcon = "⛈️";
+    } else if (weather.includes("小")) {
+      weatherIcon = "🌦️";
+    } else {
+      weatherIcon = "🌧️";
+    }
+  } else if (weather.includes("雪")) {
+    weatherIcon = "❄️";
+  } else if (weather.includes("雾") || weather.includes("霾")) {
+    weatherIcon = "🌫️";
+  }
+
+  const weatherString = `${weatherIcon} 当前天气：<span style="color:var(--theme-color);font-weight:bold;">${weather} ${temp}°C</span> 湿度${humidity}%${precipInfo} ${windDir}${windPower}级`;
+  weatherElement.innerHTML = weatherString;
+  weatherElement.style.display = "block"; // 确保天气信息可见
+}
+
+// 修改：清除天气信息
+function clearWeatherInfo() {
+  const weatherElement = document.getElementById("weather-info");
+  if (weatherElement) {
+    weatherElement.innerHTML = "🔍 天气信息获取失败，请刷新重试"; // 显示友好提示而不是清空
+    weatherElement.style.display = "block";
   }
 }
