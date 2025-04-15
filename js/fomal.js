@@ -129,10 +129,14 @@ function showWelcome() {
 
     // --- Position logic (Improved) ---
     let pos = "网络世界"; // Default position
-    const province = ipLoacation.province || "";
-    const city = ipLoacation.city || "";
-    const district = ipLoacation.district || "";
-    const country = ipLoacation.country || "";
+    // Ensure province, city, district, country are strings or empty strings
+    const province =
+      typeof ipLoacation.province === "string" ? ipLoacation.province : "";
+    const city = typeof ipLoacation.city === "string" ? ipLoacation.city : "";
+    const district =
+      typeof ipLoacation.district === "string" ? ipLoacation.district : "";
+    const country =
+      typeof ipLoacation.country === "string" ? ipLoacation.country : "";
 
     const specialAdminRegions = ["香港", "澳门", "Hong Kong", "Macao", "Macau"];
 
@@ -263,69 +267,11 @@ function getDistance(lat1, lng1, lat2, lng2) {
   return s.toFixed(0); // Return distance rounded to 0 decimal places
 }
 
-// 获取位置信息 - 使用 GeoJS API 和 高德地图API 结合
+// 获取位置信息 - 新逻辑：优先高德，GeoJS补充IP或备用
 function fetchLocationData() {
-  // 检查当前环境是否为本地或GitHub Pages
-  const isLocalHost =
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "localhost";
   const isGitHubPages = window.location.hostname.endsWith("github.io");
 
-  // 优先使用 GeoJS API 获取 IP 和位置 (HTTPS, 国际通用)
-  $.ajax({
-    type: "get",
-    url: "https://get.geojs.io/v1/ip/geo.json",
-    dataType: "json",
-    success: function (res) {
-      console.log("GeoJS位置API响应成功:", res);
-      const geoIp = res.ip || "未能获取IP"; // <--- 先保存 GeoJS 返回的 IP
-
-      // 检查是否是中国地区且缺少省份信息
-      const isChina = res.country_code === "CN" || res.country === "China";
-      const hasProvince = res.region && res.region !== "未知省份"; // GeoJS 使用 region 作为省份
-
-      if (isChina && !hasProvince) {
-        // 如果是中国地区但GeoJS未提供省份，强制使用高德API获取更详细信息
-        console.log("GeoJS未能获取中国省份信息，尝试使用高德API");
-        // 调用高德前，先设置基础信息，特别是 IP
-        ipLoacation = {
-          ip: geoIp, // <--- 使用 GeoJS 的 IP
-          country: res.country || "中国", // 基础信息可以用 GeoJS 的
-          province: res.region || "未知省份",
-          city: res.city || "",
-          district: "",
-          longitude: parseFloat(res.longitude || 0),
-          latitude: parseFloat(res.latitude || 0),
-          country_code: res.country_code,
-        };
-        fallbackToDirectAmap(isGitHubPages, true); // 传递一个标志，表示IP已由GeoJS提供
-      } else {
-        // GeoJS 提供足够信息，或非中国地区，直接使用GeoJS结果
-        ipLoacation = {
-          ip: geoIp, // <--- 使用 GeoJS 的 IP
-          country: res.country || "未知国家",
-          province: res.region || "未知省份", // GeoJS 使用 region
-          city: res.city || "",
-          district: "", // GeoJS 不提供区县
-          longitude: parseFloat(res.longitude || 0),
-          latitude: parseFloat(res.latitude || 0),
-          country_code: res.country_code,
-        };
-        ipInfoReady = true;
-        showWelcome();
-      }
-    },
-    error: function (err) {
-      console.log("GeoJS获取位置API请求失败:", err);
-      // GeoJS 失败，尝试备用方案：直接使用高德API
-      fallbackToDirectAmap(isGitHubPages, false); // 传递标志，表示IP未提供
-    },
-  });
-}
-
-// 备用方案：直接使用高德API (无IP，仅位置)
-function fallbackToDirectAmap(isGitHubPages, ipProvidedByGeoJS) {
-  // <--- 添加参数
+  // 1. 优先尝试高德API
   $.ajax({
     type: "get",
     url: "https://restapi.amap.com/v3/ip",
@@ -334,116 +280,127 @@ function fallbackToDirectAmap(isGitHubPages, ipProvidedByGeoJS) {
     },
     dataType: "json",
     success: function (data) {
-      console.log("高德地图直接IP获取成功:", data);
-
-      // --- IP 处理 ---
-      let ipToShow;
+      console.log("高德地图 API 响应成功:", data);
       if (
-        ipProvidedByGeoJS &&
-        ipLoacation &&
-        ipLoacation.ip &&
-        ipLoacation.ip !== "未能获取IP"
+        data &&
+        data.status === "1" &&
+        data.province &&
+        data.province !== "局域网"
       ) {
-        ipToShow = ipLoacation.ip; // 保持 GeoJS 提供的 IP
-      } else if (isGitHubPages) {
-        ipToShow = "GitHub Pages环境"; // GitHub Pages 特殊处理
-      } else {
-        ipToShow = "未能获取IP"; // 高德不返回IP，且GeoJS也没提供
-      }
-      // --- IP 处理结束 ---
-
-      if (data && data.status === "1") {
-        // 检查是否获取到了内网IP 或 无省份信息
-        if (data.province === "局域网" || !data.province) {
-          useDefaultLocation(isGitHubPages, ipProvidedByGeoJS); // 使用默认位置，并传递IP提供状态
-          return;
-        }
-
-        // --- 更新 ipLoacation ---
-        if (!ipLoacation) ipLoacation = {}; // 如果 ipLoacation 不存在(GeoJS完全失败时), 则初始化
-        ipLoacation.ip = ipToShow; // <--- 更新/设置 IP
-        ipLoacation.country = "中国"; // 高德API默认返回中国
-        ipLoacation.province = data.province || "未知省份";
-        ipLoacation.city = data.city || "";
-        ipLoacation.district = ""; // 高德IP定位不直接返回区县
-        ipLoacation.adcode = data.adcode;
-        ipLoacation.rectangle = data.rectangle;
-
-        // 更新经纬度 (如果高德提供了)
+        // 高德成功且数据有效
+        ipLoacation = {
+          ip: null, // IP 待 GeoJS 补充
+          country: "中国",
+          province: data.province || "未知省份",
+          city: data.city || "",
+          district: "", // 高德IP定位不直接返回区县
+          longitude: 0,
+          latitude: 0,
+          adcode: data.adcode,
+          rectangle: data.rectangle,
+        };
+        // 解析经纬度
         if (data.rectangle) {
           try {
             let rectArray = data.rectangle.split(";");
             if (rectArray.length > 0) {
               let coords = rectArray[0].split(",");
               if (coords.length >= 2) {
-                // 优先使用高德的经纬度中心点
                 ipLoacation.longitude = parseFloat(coords[0]);
                 ipLoacation.latitude = parseFloat(coords[1]);
               }
             }
           } catch (e) {
             console.log("解析高德经纬度数据出错:", e);
-            // 解析失败，保留 GeoJS 的（如果存在）或设为0
-            if (ipLoacation.longitude === undefined) ipLoacation.longitude = 0;
-            if (ipLoacation.latitude === undefined) ipLoacation.latitude = 0;
           }
-        } else {
-          // 如果高德没提供经纬度，保留 GeoJS 的（如果存在）或设为0
-          if (ipLoacation.longitude === undefined) ipLoacation.longitude = 0;
-          if (ipLoacation.latitude === undefined) ipLoacation.latitude = 0;
         }
-        // --- 更新 ipLoacation 结束 ---
+        // 调用 GeoJS 获取 IP
+        fetchGeoJSForIP();
       } else {
-        // 高德API返回失败状态
-        useDefaultLocation(isGitHubPages, ipProvidedByGeoJS); // 使用默认位置，并传递IP提供状态
-        return;
+        // 高德失败或数据无效，回退到 GeoJS
+        console.log("高德数据无效或失败，回退到 GeoJS");
+        fallbackToGeoJS(isGitHubPages);
       }
-      ipInfoReady = true;
-      showWelcome();
     },
     error: function (err) {
-      console.log("高德地图API请求失败:", err);
-      useDefaultLocation(isGitHubPages, ipProvidedByGeoJS); // 使用默认位置，并传递IP提供状态
+      console.log("高德地图 API 请求失败:", err);
+      // 高德请求失败，回退到 GeoJS
+      fallbackToGeoJS(isGitHubPages);
     },
   });
 }
 
-// 使用默认位置
-function useDefaultLocation(isGitHubPages, ipProvidedByGeoJS) {
-  // <--- 添加参数
-  let ipToShow;
-  if (
-    ipProvidedByGeoJS &&
-    ipLoacation &&
-    ipLoacation.ip &&
-    ipLoacation.ip !== "未能获取IP"
-  ) {
-    ipToShow = ipLoacation.ip; // 保持 GeoJS 提供的 IP
-  } else if (isGitHubPages) {
-    ipToShow = "GitHub Pages环境";
-  } else {
-    ipToShow = "未能获取位置"; // 默认情况
-  }
+// 新增：仅从 GeoJS 获取 IP 并补充到已有的 ipLocation
+function fetchGeoJSForIP() {
+  $.ajax({
+    type: "get",
+    url: "https://get.geojs.io/v1/ip/geo.json",
+    dataType: "json",
+    success: function (res) {
+      console.log("GeoJS IP 获取成功:", res);
+      if (ipLoacation) {
+        ipLoacation.ip = res.ip || "未能获取IP";
+      }
+      refineLocationAndShow(); // 获取到IP后进行后续处理
+    },
+    error: function (err) {
+      console.log("GeoJS IP 获取失败:", err);
+      if (ipLoacation && !ipLoacation.ip) {
+        ipLoacation.ip = "未能获取IP";
+      }
+      refineLocationAndShow(); // 即使IP获取失败，也要继续显示
+    },
+  });
+}
 
-  let posToShow = "未知位置";
-  if (isGitHubPages) {
-    posToShow = "GitHub的云端";
-  }
+// 新增：高德失败后的备用方案，尝试 GeoJS
+function fallbackToGeoJS(isGitHubPages) {
+  $.ajax({
+    type: "get",
+    url: "https://get.geojs.io/v1/ip/geo.json",
+    dataType: "json",
+    success: function (res) {
+      console.log("GeoJS (Fallback) 响应成功:", res);
+      ipLoacation = {
+        ip: res.ip || "未能获取IP",
+        country: res.country || "未知国家",
+        province: res.region || "未知省份", // GeoJS 使用 region
+        city: res.city || "",
+        district: "", // GeoJS 不提供区县
+        longitude: parseFloat(res.longitude || 0),
+        latitude: parseFloat(res.latitude || 0),
+        country_code: res.country_code,
+      };
+      refineLocationAndShow(); // 使用 GeoJS 数据进行后续处理
+    },
+    error: function (err) {
+      console.log("GeoJS (Fallback) 请求失败:", err);
+      // 双重失败，使用默认位置
+      useDefaultLocation(isGitHubPages);
+    },
+  });
+}
+
+// 修改：移除 ipProvidedByGeoJS 参数
+function useDefaultLocation(isGitHubPages) {
+  let ipToShow = isGitHubPages ? "GitHub Pages环境" : "未能获取位置";
+  let posToShow = isGitHubPages ? "GitHub的云端" : "未知位置";
 
   // --- 更新 ipLoacation ---
   if (!ipLoacation) ipLoacation = {}; // 初始化
-  ipLoacation.ip = ipToShow; // <--- 更新/设置 IP
+  ipLoacation.ip = ipToShow;
   ipLoacation.country = "中国"; // 默认中国
-  ipLoacation.province = posToShow; // 在默认情况下用posToShow代替省份
+  ipLoacation.province = posToShow;
   ipLoacation.city = "";
   ipLoacation.district = "";
-  // 保留 GeoJS 的经纬度（如果存在）或设为北京天安门
-  if (ipLoacation.longitude === undefined) ipLoacation.longitude = 116.403963;
-  if (ipLoacation.latitude === undefined) ipLoacation.latitude = 39.915119;
+  // 设为北京天安门坐标
+  if (ipLoacation.longitude === undefined || ipLoacation.longitude === 0)
+    ipLoacation.longitude = 116.403963;
+  if (ipLoacation.latitude === undefined || ipLoacation.latitude === 0)
+    ipLoacation.latitude = 39.915119;
   // --- 更新 ipLoacation 结束 ---
 
-  ipInfoReady = true;
-  showWelcome();
+  refineLocationAndShow(); // 使用默认位置数据进行后续处理
 }
 
 // 初始化调用
